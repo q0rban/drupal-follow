@@ -118,36 +118,59 @@ function follow_follow_networks() {
  */
 function follow_links_form(&$form_state, $uid = 0) {
   $form = array();
-  $links = follow_links_load();
-  $networks = module_invoke_all('follow_networks');
 
   $form['uid'] = array('#type' => 'hidden', '#value' => $uid);
   $form['follow_links']['#tree'] = TRUE;
 
-  foreach ($networks as $name => $title) {
-    $form['follow_links'][$name]['name'] = array(
-      '#type' => 'markup',
-      '#value' => $title,
-    );
-    if (isset($links[$name])) {
-      $form['follow_links'][$name]['lid'] = array(
-        '#type' => 'hidden',
-        '#value' =>  $links[$name]->lid,
-      );
+  $links = follow_links_load();
+  $networks = module_invoke_all('follow_networks');
+
+  // Put all our existing links at the top, sorted by weight.
+  if (is_array($links)) {
+    foreach ($links as $name => $link) {
+      $title = $networks[$name];
+      $form['follow_links'][$name] = _follow_links_form_link($link, $title);
+      // Unset this specific network so we don't add the same one again below.
+      unset($networks[$name]);
     }
-    $form['follow_links'][$name]['url'] = array(
-      '#type' => 'textfield',
-      '#default_value' => isset($links[$name]) ? $links[$name]->url : '',
-    );    
-    $form['follow_links'][$name]['weight'] = array(
-      '#type' => 'weight',
-      '#default_value' => isset($links[$name]) ? $links[$name]->weight : 0,
-    );
+  }
+  // Now add all the empty ones.
+  foreach ($networks as $name => $title) {
+    $link = new stdClass();
+    $form['follow_links'][$name] = _follow_links_form_link($link, $title);
   }
 
   $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
 
   return $form;
+}
+
+/**
+ * Helper function to create a 
+ */
+function _follow_links_form_link($link, $title) {
+  $elements = array();
+
+  $elements['name'] = array(
+    '#type' => 'markup',
+    '#value' => $title,
+  );
+  if (isset($link->lid)) {
+    $elements['lid'] = array(
+      '#type' => 'hidden',
+      '#value' =>  $link->lid,
+    );
+  }
+  $elements['url'] = array(
+    '#type' => 'textfield',
+    '#default_value' => isset($link->url) ? $link->url : '',
+  );    
+  $elements['weight'] = array(
+    '#type' => 'weight',
+    '#default_value' => isset($link->weight) ? $links->weight : 0,
+  );
+
+  return $elements;
 }
 
 /**
