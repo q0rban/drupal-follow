@@ -1,0 +1,265 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Allows users to add links to their social network profiles.
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function follow_help($path, $arg) {
+  switch ($path) {
+    case 'follow':
+      return t('You are helpless.');
+  }
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function follow_menu() {
+  $items = array();
+
+  $items['follow'] = array(
+    'title' => 'Add follow links',
+    'description' => 'Add sitewide follow links',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('follow_links_form'),
+    'access arguments' => array('add site follow links'),
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function follow_perm() {
+  return array('add personal follow links', 'add site follow links');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function follow_theme() {
+  $items = array();
+
+  $items['follow_links_form'] = array(
+    'arguments' => array('form' => array()),
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_block().
+ */
+function follow_block($op = 'list', $delta = 0, $edit = array()) {
+/*
+  if ($op == 'list') {
+    $blocks[0] = array(
+      'info' => t('Site')
+    );
+
+    $blocks[1] = array('info' => t('Mymodule block #2 describes ...'),
+      'cache' => BLOCK_CACHE_PER_ROLE | BLOCK_CACHE_PER_PAGE);
+
+    return $blocks;
+  }
+  else if ($op == 'configure' && $delta == 0) {
+    $form['items'] = array(
+      '#type' => 'select',
+      '#title' => t('Number of items'),
+      '#default_value' => variable_get('mymodule_block_items', 0),
+      '#options' => array('1', '2', '3'),
+    );
+    return $form;
+  }
+  else if ($op == 'save' && $delta == 0) {
+    variable_set('mymodule_block_items', $edit['items']);
+  }
+  else if ($op == 'view') {
+    switch($delta) {
+      case 0:
+        $block = array('subject' => t('Title of block #1'),
+          'content' => mymodule_display_block_1());
+        break;
+      case 1:
+        $block = array('subject' => t('Title of block #2'),
+          'content' => mymodule_display_block_2());
+        break;
+    }
+    return $block;
+  }*/
+}
+
+/**
+ * Implementation of hook_follow_networks().
+ */
+function follow_follow_networks() {
+  return array(
+    'facebook' => t('Facebook'),
+    'virb'     => t('Virb'), 
+    'myspace'  => t('MySpace'),
+    'twitter'  => t('Twitter'),
+    'picasa'   => t('Picasa'),
+    'flickr'   => t('Flickr'),
+    'youtube'  => t('YouTube'),
+    'vimeo'    => t('Vimeo'),
+    'blip'     => t('blip.tv'),
+    'last'     => t('last.fm'),
+  );
+}
+
+/**
+ * The form for editing follow links.
+ */
+function follow_links_form(&$form_state, $uid = 0) {
+  $form = array();
+  $links = follow_links_load();
+  $networks = module_invoke_all('follow_networks');
+
+  $form['uid'] = array('#type' => 'hidden', '#value' => $uid);
+  $form['follow_links']['#tree'] = TRUE;
+
+  foreach ($networks as $name => $title) {
+    $form['follow_links'][$name]['name'] = array(
+      '#type' => 'markup',
+      '#value' => $title,
+    );
+    if (isset($links[$name])) {
+      $form['follow_links'][$name]['lid'] = array(
+        '#type' => 'hidden',
+        '#value' =>  $links[$name]->lid,
+      );
+    }
+    $form['follow_links'][$name]['url'] = array(
+      '#type' => 'textfield',
+      '#default_value' => isset($links[$name]) ? $links[$name]->url : '',
+    );    
+    $form['follow_links'][$name]['weight'] = array(
+      '#type' => 'weight',
+      '#default_value' => isset($links[$name]) ? $links[$name]->weight : 0,
+    );
+  }
+
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
+
+  return $form;
+}
+
+/**
+ * Submit handler.
+ */
+function follow_links_form_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  $links = $values['follow_links'];
+
+  foreach($links as $name => $link) {
+    $link = (object) $link;
+    // Check to see if there's actually a link
+    if (empty($link->url)) {
+      // If there's an lid, delete the link.
+      if (isset($link->lid)) {
+        follow_link_delete($link->lid);
+      }
+      // Continue to the next link.
+      continue;
+    }
+    // Otherwise save the link.
+    else {
+      $link->uid = $values['uid'];
+      $link->name = $name;
+      follow_link_save($link);
+    }
+  }
+}
+
+/**
+ * Theme the drag-and-drop s form.
+ *
+ * Arranges records in a table, and adds the css and js for draggable sorting.
+ *
+ * @ingroup themeable
+ * @ingroup forms
+ * @see scaffolding_example_overview_form()
+ */
+function theme_follow_links_form($form) {
+  $rows = array();
+  foreach (element_children($form['follow_links']) as $key) {
+    $row = array();
+
+    $row[] = drupal_render($form['follow_links'][$key]['lid']) . drupal_render($form['follow_links'][$key]['name']);
+    $row[] = drupal_render($form['follow_links'][$key]['url']);
+
+    // Now, render the weight row.
+    $form['follow_links'][$key]['weight']['#attributes']['class'] = 'follow-links-weight';
+    $row[] = drupal_render($form['follow_links'][$key]['weight']);
+
+    // Add the new row to our collection of rows, and give it the 'draggable' class.
+    $rows[] = array(
+      'data' => $row,
+      'class' => 'draggable',
+    );
+  }
+
+  // Render a list of header titles, and our array of rows, into a table.
+  $header = array(t('Name'), t('URL'), t('Weight'));
+  $output = theme('table', $header, $rows, array('id' => 'follow-links-weighted-form'));
+  $output .= drupal_render($form);
+
+  drupal_add_tabledrag('follow-links-weighted-form', 'order', 'self', 'follow-links-weight');
+
+  return $output;
+}
+
+/**
+ * Loader function for individual links.
+ *
+ * Because we use '%follow_link' as a wildcard in our hook_menu()
+ * handler, this function will also be called automatically when we go to edit
+ * or delete a link. Thanks, Menu API!.
+ *
+ * @param $uid
+ *   An int containing the uid of the user. uid 0 pulls the site follow links.
+ * @return
+ *   A single link in array format, or FALSE if none matched the incoming ID.
+ */
+function follow_links_load($uid = 0) {
+  $links = array();
+
+  $sql = "SELECT * FROM {follow_links} WHERE uid = %d ORDER BY weight ASC";
+  $result = db_query($sql, $uid);
+
+  while ($link = db_fetch_object($result)) {
+    $links[$link->name] = $link;
+  }
+
+  return empty($links) ? FALSE : $links;
+}
+
+/**
+ * Inserts a new link, or updates an existing one.
+ */
+function follow_link_save($link) {
+  if (isset($link->lid)) {
+    drupal_write_record('follow_links', $link, 'lid');
+  }
+  else {
+    drupal_write_record('follow_links', $link);
+  }
+  return $link;
+}
+
+/**
+ * Deletes a link, given its unique ID.
+ *
+ * @param $lid
+ *   An int containing the ID of a link.
+ */
+function follow_link_delete($lid) {
+  $sql = 'DELETE FROM {follow_links} WHERE lid = %d';
+  db_query($sql, $lid);
+}
