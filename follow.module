@@ -6,13 +6,20 @@
  * Allows users to add links to their social network profiles.
  */
 
+define('FOLLOW_NAME', 0);
+define('FOLLOW_ME', 1);
+define('FOLLOW_US', 2);
+
 /**
  * Implementation of hook_help().
  */
 function follow_help($path, $arg) {
   switch ($path) {
     case 'follow':
+    case 'user/%/follow':
       return t('You are helpless.');
+    case 'admin/settings/follow':
+      return t('Here you can set what the default titles are for the "follow" blocks.  If you would like a custom title, edit the individual blocks <a href="!href">here</a>.', array('!href' => url('admin/build/block')));
   }
 }
 
@@ -30,6 +37,23 @@ function follow_menu() {
     'access arguments' => array('add site follow links'),
   );
 
+  $items['user/%/follow'] = array(
+    'title' => 'Follow',
+    'description' => 'Add sitewide follow links',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('follow_links_form', 1),
+    'access arguments' => array('add user follow links'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['admin/settings/follow'] = array(
+    'title' => 'Follow',
+    'description' => 'Administer the follow module',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('follow_settings_form'),
+    'access arguments' => array('administer follow'),
+  );
+
   return $items;
 }
 
@@ -37,7 +61,7 @@ function follow_menu() {
  * Implementation of hook_perm().
  */
 function follow_perm() {
-  return array('add personal follow links', 'add site follow links');
+  return array('add user follow links', 'add site follow links', 'administer follow');
 }
 
 /**
@@ -49,6 +73,12 @@ function follow_theme() {
   $items['follow_links_form'] = array(
     'arguments' => array('form' => array()),
   );
+  $items['follow_links'] = array(
+    'arguments' => array('links' => array(), 'networks' => array()),
+  );
+  $items['follow_link'] = array(
+    'arguments' => array('link' => NULL, 'title' => NULL),
+  );
 
   return $items;
 }
@@ -56,43 +86,146 @@ function follow_theme() {
 /**
  * Implementation of hook_block().
  */
-function follow_block($op = 'list', $delta = 0, $edit = array()) {
-/*
+function follow_block($op = 'list', $delta = 'site', $edit = array()) {
   if ($op == 'list') {
-    $blocks[0] = array(
-      'info' => t('Site')
+    $blocks['site'] = array(
+      'info' => t('Follow Site'),
+      'cache' => BLOCK_CACHE_GLOBAL,
     );
 
-    $blocks[1] = array('info' => t('Mymodule block #2 describes ...'),
-      'cache' => BLOCK_CACHE_PER_ROLE | BLOCK_CACHE_PER_PAGE);
+    $blocks['user'] = array(
+      'info' => t('Follow User'),
+      'cache' => BLOCK_CACHE_PER_PAGE,
+    );
 
     return $blocks;
   }
-  else if ($op == 'configure' && $delta == 0) {
-    $form['items'] = array(
-      '#type' => 'select',
-      '#title' => t('Number of items'),
-      '#default_value' => variable_get('mymodule_block_items', 0),
-      '#options' => array('1', '2', '3'),
-    );
-    return $form;
-  }
-  else if ($op == 'save' && $delta == 0) {
-    variable_set('mymodule_block_items', $edit['items']);
-  }
-  else if ($op == 'view') {
+  elseif ($op == 'configure') {
     switch($delta) {
-      case 0:
-        $block = array('subject' => t('Title of block #1'),
-          'content' => mymodule_display_block_1());
+      case 'site':
+        $form['follow_title'] = array(
+          '#type' => 'radios',
+          '#title' => t('Default block title'),
+          '#default_value' => variable_get('follow_site_block_title', FOLLOW_NAME),
+          '#options' => array(
+            FOLLOW_NAME => t('Follow @name on:', array('@name' => variable_get('site_name', 'Drupal'))),
+            FOLLOW_ME => t('Follow me on:'),
+            FOLLOW_US => t('Follow us on:'),
+          ),
+        );
+        $form['follow_user'] = array(
+          '#type' => 'checkbox',
+          '#title' => t('User pages'),
+          '#description' => t('Should this block display on user profile pages?'),
+          '#default_value' => variable_get('follow_site_block_user', TRUE),
+        );
+        return $form;
+
+      case 'user':
+        $form['follow_title'] = array(
+          '#type' => 'radios',
+          '#title' => t('Default block title'),
+          '#default_value' => variable_get('follow_user_block_title', FOLLOW_ME),
+          '#options' => array(
+            FOLLOW_NAME => t('Follow [username] on:'),
+            FOLLOW_ME => t('Follow me on:'),
+          ),
+        );
+        return $form;
+    }
+  }
+  elseif ($op == 'save') {
+    variable_set('follow_'. $delta .'_block_title', $edit['follow_title']);
+    if ($delta == 'site') {
+      variable_set('follow_site_block_user', $edit['follow_user']);
+    }
+  }
+  elseif ($op == 'view') {  
+    switch ($delta) {
+      case 'site':
+        if ($content = _follow_block_content() 
+            && (variable_get('follow_site_block_user', TRUE) || !(arg(0) == 'user' && is_numeric(arg(1))))) {
+          return array(
+            'subject' => _follow_block_subject(),
+            'content' => $content,
+          );
+        }
         break;
-      case 1:
-        $block = array('subject' => t('Title of block #2'),
-          'content' => mymodule_display_block_2());
+      case 'user':
+        $uid = arg(1);
+        if (arg(0) == 'user' && is_numeric($uid) && $content = _follow_block_content($uid)) {
+          return array(
+            'subject' => _follow_block_subject($uid),
+            'content' => $content,
+          );
+        }
         break;
     }
-    return $block;
-  }*/
+  }
+}
+
+/**
+ * Helper function to build the block title.
+ */
+function _follow_block_subject($uid = 0) {
+  // Check to see if we have a valid username.
+  if ($uid) {
+    $setting = variable_get('follow_user_block_title', FOLLOW_ME);
+    // Special handling for usernames.
+    if ($setting == FOLLOW_NAME) {
+      $account = user_load($uid);
+      return t('Follow @name on:', array('@name' => $account->name));
+    }
+    return t('Follow me on:');
+  }
+
+  switch(variable_get('follow_site_block_title', FOLLOW_NAME)) {
+    case FOLLOW_NAME:
+      return t('Follow @name on:', array('@name' => variable_get('site_name', 'Drupal')));
+
+    case FOLLOW_ME:
+      return t('Follow me on:');
+
+    case FOLLOW_US:
+      return t('Follow us on:');
+  }
+}
+
+/**
+ * Helper function to build the block content display.
+ */
+function _follow_block_content($uid = 0) {
+  if ($links = follow_links_load($uid)) {
+    return theme('follow_links', $links, module_invoke_all('follow_networks'));
+  }
+}
+
+/**
+ * Theme function to output a list of links.
+ *
+ * @ingroup themeable
+ */
+function theme_follow_links($links, $networks) {
+  $output = '';
+  foreach($links as $link) {
+    $title = $networks[$link->name];
+    $output .= theme('follow_link', $link, $title);
+  }
+  return $output;
+}
+
+/**
+ * Theme function to print an individual link.
+ *
+ * @ingroup themable
+ */
+function theme_follow_link($link, $title) {
+  $classes = array();
+  $classes[] = "follow-link-{$link->name}";
+  $classes[] = $link->uid ? 'follow-link-user' : 'follow-link-site';
+  $class = drupal_attributes(array('class' => implode(' ', $classes)));
+
+  return "<a href='{$link->url}'$class>$title</a>\n";
 }
 
 /**
@@ -115,6 +248,8 @@ function follow_follow_networks() {
 
 /**
  * The form for editing follow links.
+ *
+ * @ingroup forms
  */
 function follow_links_form(&$form_state, $uid = 0) {
   $form = array();
@@ -122,7 +257,7 @@ function follow_links_form(&$form_state, $uid = 0) {
   $form['uid'] = array('#type' => 'hidden', '#value' => $uid);
   $form['follow_links']['#tree'] = TRUE;
 
-  $links = follow_links_load();
+  $links = follow_links_load($uid);
   $networks = module_invoke_all('follow_networks');
 
   // Put all our existing links at the top, sorted by weight.
@@ -146,7 +281,7 @@ function follow_links_form(&$form_state, $uid = 0) {
 }
 
 /**
- * Helper function to create a 
+ * Helper function to create an individual link form element.
  */
 function _follow_links_form_link($link, $title) {
   $elements = array();
@@ -160,14 +295,14 @@ function _follow_links_form_link($link, $title) {
       '#type' => 'hidden',
       '#value' =>  $link->lid,
     );
+    $elements['weight'] = array(
+      '#type' => 'weight',
+      '#default_value' => $links->weight,
+    );
   }
   $elements['url'] = array(
     '#type' => 'textfield',
     '#default_value' => isset($link->url) ? $link->url : '',
-  );    
-  $elements['weight'] = array(
-    '#type' => 'weight',
-    '#default_value' => isset($link->weight) ? $links->weight : 0,
   );
 
   return $elements;
@@ -207,30 +342,38 @@ function follow_links_form_submit($form, &$form_state) {
  *
  * @ingroup themeable
  * @ingroup forms
- * @see scaffolding_example_overview_form()
  */
 function theme_follow_links_form($form) {
   $rows = array();
+  $disabled_rows = array();
   foreach (element_children($form['follow_links']) as $key) {
     $row = array();
+    $disabled_row = array();
 
-    $row[] = drupal_render($form['follow_links'][$key]['lid']) . drupal_render($form['follow_links'][$key]['name']);
-    $row[] = drupal_render($form['follow_links'][$key]['url']);
-
-    // Now, render the weight row.
-    $form['follow_links'][$key]['weight']['#attributes']['class'] = 'follow-links-weight';
-    $row[] = drupal_render($form['follow_links'][$key]['weight']);
-
-    // Add the new row to our collection of rows, and give it the 'draggable' class.
-    $rows[] = array(
-      'data' => $row,
-      'class' => 'draggable',
-    );
+    if (isset($form['follow_links'][$key]['weight'])) {
+      $row[] = drupal_render($form['follow_links'][$key]['lid']) . drupal_render($form['follow_links'][$key]['name']);
+      $row[] = drupal_render($form['follow_links'][$key]['url']);
+  
+      // Now, render the weight row.
+      $form['follow_links'][$key]['weight']['#attributes']['class'] = 'follow-links-weight';
+      $row[] = drupal_render($form['follow_links'][$key]['weight']);
+  
+      // Add the new row to our collection of rows, and give it the 'draggable' class.
+      $rows[] = array(
+        'data' => $row,
+        'class' => 'draggable',
+      );
+    }
+    else {
+      $disabled_rows[] = array(drupal_render($form['follow_links'][$key]['name']), drupal_render($form['follow_links'][$key]['url']));
+    }
   }
 
   // Render a list of header titles, and our array of rows, into a table.
   $header = array(t('Name'), t('URL'), t('Weight'));
+  $disabled_header = array(t('Name'), t('URL'));
   $output = theme('table', $header, $rows, array('id' => 'follow-links-weighted-form'));
+  $output .= theme('table', $disabled_header, $disabled_rows);
   $output .= drupal_render($form);
 
   drupal_add_tabledrag('follow-links-weighted-form', 'order', 'self', 'follow-links-weight');
@@ -240,10 +383,6 @@ function theme_follow_links_form($form) {
 
 /**
  * Loader function for individual links.
- *
- * Because we use '%follow_link' as a wildcard in our hook_menu()
- * handler, this function will also be called automatically when we go to edit
- * or delete a link. Thanks, Menu API!.
  *
  * @param $uid
  *   An int containing the uid of the user. uid 0 pulls the site follow links.
@@ -260,7 +399,7 @@ function follow_links_load($uid = 0) {
     $links[$link->name] = $link;
   }
 
-  return empty($links) ? FALSE : $links;
+  return $links;
 }
 
 /**
@@ -285,4 +424,13 @@ function follow_link_save($link) {
 function follow_link_delete($lid) {
   $sql = 'DELETE FROM {follow_links} WHERE lid = %d';
   db_query($sql, $lid);
+}
+
+/**
+ * Follow settings form.
+ */
+function follow_settings_form() {
+  $form = array();
+
+  return system_settings_form($form);
 }
