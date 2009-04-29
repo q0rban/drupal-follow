@@ -13,3 +13,17 @@ Enable the module at admin/build/modules, then go to user/admin/permissions to
 set which roles are allowed to edit the sitewide follow links, edit own follow
 links, edit all user follow links, or administer follow.  Finally, go to
 admin/build/blocks to enable the blocks.
+
+SOCIAL NETWORKS
+********************************************************************************
+Here's a list of the currently supported social networks:
+ • Facebook
+ • Virb
+ • MySpace
+ • Twitter
+ • Picasa
+ • Flickr
+ • YouTube
+ • Vimeo
+ • blip.tv
+ • last.fm
