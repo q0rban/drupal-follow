@@ -3,7 +3,7 @@
 
 /**
  * @file
- * Scaffolding example module's install and uninstall code.
+ *   Follow module's install and uninstall code.
  */
 
 /**
@@ -64,13 +64,11 @@ function follow_schema() {
 
 /**
  * Implementation of hook_uninstall().
- *
- * This hook is called when the already-disabled module is explicitly uninstalled
- * by the administrator -- simple disabling the module will trigger hook_disable().
- * It should delete any database tables added by the module, remove any variables
- * that are unique to the module, and clear out any cached data.
  */
 function follow_uninstall() {
   drupal_uninstall_schema('follow');
-  variable_del('follow_setting');
+  variable_del('follow_user_block_title');
+  variable_del('follow_site_block_title');
+  variable_del('follow_site_block_user');
+  cache_clear_all('follow:networks', 'cache');
 }

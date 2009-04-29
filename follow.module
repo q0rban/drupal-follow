@@ -3,7 +3,7 @@
 
 /**
  * @file
- * Allows users to add links to their social network profiles.
+ *   Allows users to add links to their social network profiles.
  */
 
 define('FOLLOW_NAME', 0);
@@ -34,34 +34,43 @@ function follow_menu() {
     'description' => 'Add sitewide follow links',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('follow_links_form'),
-    'access arguments' => array('add site follow links'),
+    'access arguments' => array('edit site follow links'),
   );
 
   $items['user/%/follow'] = array(
-    'title' => 'Follow',
-    'description' => 'Add sitewide follow links',
+    'title' => 'My follow links',
+    'description' => 'edit follow links',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('follow_links_form', 1),
-    'access arguments' => array('add user follow links'),
+    'access callback' => 'follow_links_user_access',
+    'access arguments' => array(1),
     'type' => MENU_LOCAL_TASK,
   );
 
-  $items['admin/settings/follow'] = array(
+  // No settings!
+  /* $items['admin/settings/follow'] = array(
     'title' => 'Follow',
     'description' => 'Administer the follow module',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('follow_settings_form'),
     'access arguments' => array('administer follow'),
-  );
+  ); */
 
   return $items;
+}
+
+/**
+ * Access callback for user follow links editing.
+ */
+function follow_links_user_access($uid) {
+  return (($GLOBALS['user']->uid == $uid) || user_access('edit any user follow links')) && $account->uid > 0;
 }
 
 /**
  * Implementation of hook_perm().
  */
 function follow_perm() {
-  return array('add user follow links', 'add site follow links', 'administer follow');
+  return array('edit own follow links', 'edit site follow links', 'edit any user follow links', 'administer follow');
 }
 
 /**
@@ -125,7 +134,7 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
         $form['follow_title'] = array(
           '#type' => 'radios',
           '#title' => t('Default block title'),
-          '#default_value' => variable_get('follow_user_block_title', FOLLOW_ME),
+          '#default_value' => variable_get('follow_user_block_title', FOLLOW_NAME),
           '#options' => array(
             FOLLOW_NAME => t('Follow [username] on:'),
             FOLLOW_ME => t('Follow me on:'),
@@ -166,11 +175,14 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
 
 /**
  * Helper function to build the block title.
+ *
+ * @param $uid
+ *   The uid of the user account.  Defaults to the site form, $uid = 0.
  */
 function _follow_block_subject($uid = 0) {
   // Check to see if we have a valid username.
   if ($uid) {
-    $setting = variable_get('follow_user_block_title', FOLLOW_ME);
+    $setting = variable_get('follow_user_block_title', FOLLOW_NAME);
     // Special handling for usernames.
     if ($setting == FOLLOW_NAME) {
       $account = user_load($uid);
@@ -193,15 +205,23 @@ function _follow_block_subject($uid = 0) {
 
 /**
  * Helper function to build the block content display.
+ *
+ * @param $uid
+ *   The uid of the user account.  Defaults to the site form, $uid = 0.
  */
 function _follow_block_content($uid = 0) {
   if ($links = follow_links_load($uid)) {
-    return theme('follow_links', $links, module_invoke_all('follow_networks'));
+    return theme('follow_links', $links, follow_networks_load());
   }
 }
 
 /**
  * Theme function to output a list of links.
+ *
+ * @param $links
+ *   An array of follow link objects.
+ * @param $networks
+ *   An array of network names, keys are machine names, values are visible titles.
  *
  * @ingroup themeable
  */
@@ -217,6 +237,11 @@ function theme_follow_links($links, $networks) {
 /**
  * Theme function to print an individual link.
  *
+ * @param $link
+ *   A follow link object.
+ * @param $title
+ *   The translated title of the social network.
+ *
  * @ingroup themable
  */
 function theme_follow_link($link, $title) {
@@ -228,26 +253,14 @@ function theme_follow_link($link, $title) {
   return "<a href='{$link->url}'$class>$title</a>\n";
 }
 
-/**
- * Implementation of hook_follow_networks().
- */
-function follow_follow_networks() {
-  return array(
-    'facebook' => t('Facebook'),
-    'virb'     => t('Virb'), 
-    'myspace'  => t('MySpace'),
-    'twitter'  => t('Twitter'),
-    'picasa'   => t('Picasa'),
-    'flickr'   => t('Flickr'),
-    'youtube'  => t('YouTube'),
-    'vimeo'    => t('Vimeo'),
-    'blip'     => t('blip.tv'),
-    'last'     => t('last.fm'),
-  );
-}
 
 /**
  * The form for editing follow links.
+ *
+ * @param $form_state
+ *   A keyed array containing the current state of the form.
+ * @param $uid
+ *   The uid of the user account.  Defaults to the site form, $uid = 0.
  *
  * @ingroup forms
  */
@@ -258,7 +271,7 @@ function follow_links_form(&$form_state, $uid = 0) {
   $form['follow_links']['#tree'] = TRUE;
 
   $links = follow_links_load($uid);
-  $networks = module_invoke_all('follow_networks');
+  $networks = follow_networks_load(TRUE);
 
   // Put all our existing links at the top, sorted by weight.
   if (is_array($links)) {
@@ -309,7 +322,7 @@ function _follow_links_form_link($link, $title) {
 }
 
 /**
- * Submit handler.
+ * Submit handler for the follow_links_form.
  */
 function follow_links_form_submit($form, &$form_state) {
   $values = $form_state['values'];
@@ -336,7 +349,7 @@ function follow_links_form_submit($form, &$form_state) {
 }
 
 /**
- * Theme the drag-and-drop s form.
+ * Theme the drag-and-drop form.
  *
  * Arranges records in a table, and adds the css and js for draggable sorting.
  *
@@ -346,6 +359,7 @@ function follow_links_form_submit($form, &$form_state) {
 function theme_follow_links_form($form) {
   $rows = array();
   $disabled_rows = array();
+
   foreach (element_children($form['follow_links']) as $key) {
     $row = array();
     $disabled_row = array();
@@ -372,14 +386,32 @@ function theme_follow_links_form($form) {
   // Render a list of header titles, and our array of rows, into a table.
   $header = array(t('Name'), t('URL'), t('Weight'));
   $disabled_header = array(t('Name'), t('URL'));
-  $output = theme('table', $header, $rows, array('id' => 'follow-links-weighted-form'));
-  $output .= theme('table', $disabled_header, $disabled_rows);
+
+  $output = '';
+  if (count($rows)) {
+    $output .= theme('table', $header, $rows, array('id' => 'follow-links-weighted-form'));
+  }
+  if (count($disabled_rows)) {
+    $output .= theme('table', $disabled_header, $disabled_rows);
+  }
   $output .= drupal_render($form);
 
   drupal_add_tabledrag('follow-links-weighted-form', 'order', 'self', 'follow-links-weight');
 
   return $output;
 }
+
+/**
+ * Follow settings form.
+ *
+ * @ingroup forms
+ */
+function follow_settings_form() {
+  $form = array();
+
+  return system_settings_form($form);
+}
+
 
 /**
  * Loader function for individual links.
@@ -404,6 +436,9 @@ function follow_links_load($uid = 0) {
 
 /**
  * Inserts a new link, or updates an existing one.
+ *
+ * @param $link
+ *   A link object to be saved.
  */
 function follow_link_save($link) {
   if (isset($link->lid)) {
@@ -426,11 +461,58 @@ function follow_link_delete($lid) {
   db_query($sql, $lid);
 }
 
-/**
- * Follow settings form.
- */
-function follow_settings_form() {
-  $form = array();
 
-  return system_settings_form($form);
+/**
+ * Loads all follow networks
+ *
+ * @param $reset
+ *   Boolean.  If TRUE, flushes the follow networks cache.
+ *
+ * @return
+ *   An array of network names, keys are machine names, values are visible titles.
+ */
+function follow_networks_load($reset = FALSE) {
+  static $networks = array();
+
+  // Clear cache if $reset is TRUE;
+  if ($reset) {
+    $networks = array();
+    cache_clear_all('follow:networks', 'cache');
+  }
+  // Return presets if the array is populated.
+  if (!empty($networks)) {
+    return $networks;
+  }
+
+  // Grab from cache or build the array of networks.
+  if (($cache = cache_get('follow:networks', 'cache')) && is_array($cache->data)) {
+    $networks = $cache->data;
+  }
+  else {
+    // We don't have an API to create new networks yet, so for now, we only call hook_follow_networks().
+    $networks = module_invoke_all('follow_networks');
+    cache_set('follow:networks', $networks);
+  }
+  return $networks;
+}
+
+/**
+ * Implementation of hook_follow_networks().
+ *
+ * @return
+ *   An array of network names, keys are machine names, values are visible titles.
+ */
+function follow_follow_networks() {
+  return array(
+    'facebook' => t('Facebook'),
+    'virb'     => t('Virb'),
+    'myspace'  => t('MySpace'),
+    'twitter'  => t('Twitter'),
+    'picasa'   => t('Picasa'),
+    'flickr'   => t('Flickr'),
+    'youtube'  => t('YouTube'),
+    'vimeo'    => t('Vimeo'),
+    'blip'     => t('blip.tv'),
+    'last'     => t('last.fm'),
+  );
 }
