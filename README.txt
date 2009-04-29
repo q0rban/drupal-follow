@@ -14,6 +14,14 @@ set which roles are allowed to edit the sitewide follow links, edit own follow
 links, edit all user follow links, or administer follow.  Finally, go to
 admin/build/blocks to enable the blocks.
 
+RECOMMENDED ADD ON
+********************************************************************************
+It is recommended to enable a module such as external [1] that will pop open
+the follow links in a new tab or window, as target="_blank" is not used since it
+doesn't validate.
+
+[1] http://drupal.org/project/external
+
 SOCIAL NETWORKS
 ********************************************************************************
 Here's a list of the currently supported social networks:
@@ -27,3 +35,12 @@ Here's a list of the currently supported social networks:
  • Vimeo
  • blip.tv
  • last.fm
+
+ICONS
+********************************************************************************
+Although a few of the icons were hand made, most of them were created by either
+Eli Burford [1] or Yichi [2].  Thanks, you guys!
+
+[1] http://www.blogperfume.com/social-media-icons-pack-in-3-sizes-for-download/
+[2] http://vikiworks.com/2007/06/15/social-bookmark-iconset/
+

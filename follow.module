@@ -117,9 +117,9 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
           '#title' => t('Default block title'),
           '#default_value' => variable_get('follow_site_block_title', FOLLOW_NAME),
           '#options' => array(
-            FOLLOW_NAME => t('Follow @name on:', array('@name' => variable_get('site_name', 'Drupal'))),
-            FOLLOW_ME => t('Follow me on:'),
-            FOLLOW_US => t('Follow us on:'),
+            FOLLOW_NAME => t('Follow @name on', array('@name' => variable_get('site_name', 'Drupal'))),
+            FOLLOW_ME => t('Follow me on'),
+            FOLLOW_US => t('Follow us on'),
           ),
         );
         $form['follow_user'] = array(
@@ -136,8 +136,8 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
           '#title' => t('Default block title'),
           '#default_value' => variable_get('follow_user_block_title', FOLLOW_NAME),
           '#options' => array(
-            FOLLOW_NAME => t('Follow [username] on:'),
-            FOLLOW_ME => t('Follow me on:'),
+            FOLLOW_NAME => t('Follow [username] on'),
+            FOLLOW_ME => t('Follow me on'),
           ),
         );
         return $form;
@@ -180,26 +180,36 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
  *   The uid of the user account.  Defaults to the site form, $uid = 0.
  */
 function _follow_block_subject($uid = 0) {
+  return follow_link_title($uid) .':';
+}
+
+/**
+ * Helper function to create a link or block title.
+ *
+ * @param $uid
+ *   The uid of the user account.  Defaults to the site form, $uid = 0.
+ */
+function follow_link_title($uid = 0) {
   // Check to see if we have a valid username.
   if ($uid) {
     $setting = variable_get('follow_user_block_title', FOLLOW_NAME);
     // Special handling for usernames.
     if ($setting == FOLLOW_NAME) {
       $account = user_load($uid);
-      return t('Follow @name on:', array('@name' => $account->name));
+      return t('Follow @name on', array('@name' => $account->name));
     }
-    return t('Follow me on:');
+    return t('Follow me on');
   }
 
   switch(variable_get('follow_site_block_title', FOLLOW_NAME)) {
     case FOLLOW_NAME:
-      return t('Follow @name on:', array('@name' => variable_get('site_name', 'Drupal')));
+      return t('Follow @name on', array('@name' => variable_get('site_name', 'Drupal')));
 
     case FOLLOW_ME:
-      return t('Follow me on:');
+      return t('Follow me on');
 
     case FOLLOW_US:
-      return t('Follow us on:');
+      return t('Follow us on');
   }
 }
 
@@ -211,6 +221,7 @@ function _follow_block_subject($uid = 0) {
  */
 function _follow_block_content($uid = 0) {
   if ($links = follow_links_load($uid)) {
+    drupal_add_css(drupal_get_path('module', 'follow') .'/follow.css');
     return theme('follow_links', $links, follow_networks_load());
   }
 }
@@ -226,11 +237,14 @@ function _follow_block_content($uid = 0) {
  * @ingroup themeable
  */
 function theme_follow_links($links, $networks) {
-  $output = '';
+  $output = '<div class="follow-links clear-block">';
+
   foreach($links as $link) {
     $title = $networks[$link->name];
     $output .= theme('follow_link', $link, $title);
   }
+
+  $output .= '</div>';
   return $output;
 }
 
@@ -246,11 +260,16 @@ function theme_follow_links($links, $networks) {
  */
 function theme_follow_link($link, $title) {
   $classes = array();
+  $classes[] = 'follow-link';
   $classes[] = "follow-link-{$link->name}";
   $classes[] = $link->uid ? 'follow-link-user' : 'follow-link-site';
-  $class = drupal_attributes(array('class' => implode(' ', $classes)));
+  $attributes = drupal_attributes(array(
+    'class' => implode(' ', $classes),
+    'href' => $link->url,
+    'title' => follow_link_title($link->uid) .' '. $title,
+  ));
 
-  return "<a href='{$link->url}'$class>$title</a>\n";
+  return "<a$attributes>$title</a>\n";
 }
 
 
@@ -316,9 +335,19 @@ function _follow_links_form_link($link, $title) {
   $elements['url'] = array(
     '#type' => 'textfield',
     '#default_value' => isset($link->url) ? $link->url : '',
+    '#element_validate' => array('follow_url_validate'),
   );
 
   return $elements;
+}
+
+/**
+ * Validates the url field to verify it's actually a url.
+ */
+function follow_url_validate($form) {
+  if($form['#value'] && !preg_match("/^[a-zA-Z]+[:\/\/]+[A-Za-z0-9\-_]+\\.+[A-Za-z0-9\.\/%&=\?\-_]+$/i", $form['#value'])) {
+    form_error($form, t('The specified url is invalid.'));
+  }
 }
 
 /**
@@ -512,7 +541,7 @@ function follow_follow_networks() {
     'flickr'   => t('Flickr'),
     'youtube'  => t('YouTube'),
     'vimeo'    => t('Vimeo'),
-    'blip'     => t('blip.tv'),
-    'last'     => t('last.fm'),
+    'bliptv'   => t('blip.tv'),
+    'lastfm'   => t('last.fm'),
   );
 }
