@@ -1,5 +1,5 @@
 <?php
-// $Id$
+// $Id: follow.module,v 1.1.2.3 2009/06/01 14:28:32 q0rban Exp $
 
 /**
  * @file
@@ -17,7 +17,7 @@ function follow_help($path, $arg) {
   switch ($path) {
     case 'follow':
     case 'user/%/follow':
-      return t('You are helpless.');
+      return t('Please copy and paste urls for each service you would like to display in the block.');
     case 'admin/settings/follow':
       return t('Here you can set what the default titles are for the "follow" blocks.  If you would like a custom title, edit the individual blocks <a href="!href">here</a>.', array('!href' => url('admin/build/block')));
   }
@@ -63,7 +63,7 @@ function follow_menu() {
  * Access callback for user follow links editing.
  */
 function follow_links_user_access($uid) {
-  return (($GLOBALS['user']->uid == $uid) || user_access('edit any user follow links')) && $account->uid > 0;
+  return (($GLOBALS['user']->uid == $uid) || user_access('edit any user follow links')) && $uid > 0;
 }
 
 /**
@@ -152,7 +152,7 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
   elseif ($op == 'view') {  
     switch ($delta) {
       case 'site':
-        if ($content = _follow_block_content() 
+        if (($content = _follow_block_content())
             && (variable_get('follow_site_block_user', TRUE) || !(arg(0) == 'user' && is_numeric(arg(1))))) {
           return array(
             'subject' => _follow_block_subject(),
@@ -162,7 +162,7 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
         break;
       case 'user':
         $uid = arg(1);
-        if (arg(0) == 'user' && is_numeric($uid) && $content = _follow_block_content($uid)) {
+        if (arg(0) == 'user' && is_numeric($uid) && ($content = _follow_block_content($uid))) {
           return array(
             'subject' => _follow_block_subject($uid),
             'content' => $content,
@@ -220,10 +220,15 @@ function follow_link_title($uid = 0) {
  *   The uid of the user account.  Defaults to the site form, $uid = 0.
  */
 function _follow_block_content($uid = 0) {
+  $output = '';
+
   if ($links = follow_links_load($uid)) {
     drupal_add_css(drupal_get_path('module', 'follow') .'/follow.css');
-    return theme('follow_links', $links, follow_networks_load());
+    $output = theme('follow_links', $links, follow_networks_load());
+    $output .= _follow_block_config_links($uid);
   }
+
+  return $output;
 }
 
 /**
@@ -270,6 +275,43 @@ function theme_follow_link($link, $title) {
   ));
 
   return "<a$attributes>$title</a>\n";
+}
+
+/**
+ * Outputs a list of configuration links for users with appropriate permissions
+ *
+ * @param $uid
+ *   The uid of the user account.  Defaults to the site form, $uid = 0.
+ * @return
+ *   A string containing the links, output with theme_links().
+ */
+function _follow_block_config_links($uid) {
+  $links = array();
+
+  if ($uid == 0 && user_access('edit site follow links')) {
+    $links['follow_edit'] = array(
+      'title' => t('Edit'),
+      'href' => 'follow',
+      'query' => drupal_get_destination(),
+    );
+  }
+  elseif (follow_links_user_access($uid)) {
+    $links['follow_edit'] = array(
+      'title' => t('Edit'),
+      'href' => 'user/'. $uid .'/follow',
+      'query' => drupal_get_destination(),
+    );
+  }
+
+  if (user_access('administer blocks')) {
+    $links['follow_configure'] = array(
+      'title' => t('Configure'),
+      'href' => 'admin/build/block/configure/follow/'. $uid,
+      'query' => drupal_get_destination(),
+    );
+  }
+
+  return theme('links', $links, array('class' => 'links inline'));
 }
 
 
@@ -543,5 +585,6 @@ function follow_follow_networks() {
     'vimeo'    => t('Vimeo'),
     'bliptv'   => t('blip.tv'),
     'lastfm'   => t('last.fm'),
+    'linkedin' => t('LinkedIn'),
   );
 }
