@@ -1,5 +1,5 @@
 <?php
-// $Id: follow.module,v 1.1.2.3 2009/06/01 14:28:32 q0rban Exp $
+// $Id: follow.module,v 1.1.2.4 2009/06/01 14:38:10 q0rban Exp $
 
 /**
  * @file
@@ -306,7 +306,7 @@ function _follow_block_config_links($uid) {
   if (user_access('administer blocks')) {
     $links['follow_configure'] = array(
       'title' => t('Configure'),
-      'href' => 'admin/build/block/configure/follow/'. $uid,
+      'href' => $uid ? 'admin/build/block/configure/follow/user' : 'admin/build/block/configure/follow/site',
       'query' => drupal_get_destination(),
     );
   }
