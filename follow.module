@@ -1,5 +1,5 @@
 <?php
-// $Id: follow.module,v 1.1.2.4 2009/06/01 14:38:10 q0rban Exp $
+// $Id: follow.module,v 1.1.2.15 2010/01/12 17:22:38 q0rban Exp $
 
 /**
  * @file
@@ -24,13 +24,20 @@ function follow_help($path, $arg) {
 }
 
 /**
+ * Implementation of hook_init().
+ */
+function follow_init() {
+  drupal_add_css(drupal_get_path('module', 'follow') .'/follow.css');
+}
+
+/**
  * Implementation of hook_menu().
  */
 function follow_menu() {
   $items = array();
 
-  $items['follow'] = array(
-    'title' => 'Add follow links',
+  $items['admin/build/follow'] = array(
+    'title' => 'Site follow links',
     'description' => 'Add sitewide follow links',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('follow_links_form'),
@@ -63,7 +70,7 @@ function follow_menu() {
  * Access callback for user follow links editing.
  */
 function follow_links_user_access($uid) {
-  return (($GLOBALS['user']->uid == $uid) || user_access('edit any user follow links')) && $uid > 0;
+  return ((($GLOBALS['user']->uid == $uid) && user_access('edit own follow links')) || user_access('edit any user follow links')) && $uid > 0;
 }
 
 /**
@@ -99,12 +106,16 @@ function follow_block($op = 'list', $delta = 'site', $edit = array()) {
   if ($op == 'list') {
     $blocks['site'] = array(
       'info' => t('Follow Site'),
-      'cache' => BLOCK_CACHE_GLOBAL,
+      // We need to cache per role so the edit/configure links display only if user
+      // has access.
+      'cache' => BLOCK_CACHE_PER_ROLE,
     );
 
     $blocks['user'] = array(
       'info' => t('Follow User'),
-      'cache' => BLOCK_CACHE_PER_PAGE,
+      // Here we need to cache per user so the edit link only shows for the associated
+      // account.
+      'cache' => BLOCK_CACHE_PER_USER,
     );
 
     return $blocks;
@@ -196,7 +207,8 @@ function follow_link_title($uid = 0) {
     // Special handling for usernames.
     if ($setting == FOLLOW_NAME) {
       $account = user_load($uid);
-      return t('Follow @name on', array('@name' => $account->name));
+      // Set plain to TRUE for realname module support.
+      return t('Follow !name on', array('!name' => theme('username', $account, array('plain' => TRUE))));
     }
     return t('Follow me on');
   }
@@ -223,7 +235,6 @@ function _follow_block_content($uid = 0) {
   $output = '';
 
   if ($links = follow_links_load($uid)) {
-    drupal_add_css(drupal_get_path('module', 'follow') .'/follow.css');
     $output = theme('follow_links', $links, follow_networks_load());
     $output .= _follow_block_config_links($uid);
   }
@@ -291,7 +302,7 @@ function _follow_block_config_links($uid) {
   if ($uid == 0 && user_access('edit site follow links')) {
     $links['follow_edit'] = array(
       'title' => t('Edit'),
-      'href' => 'follow',
+      'href' => 'admin/build/follow',
       'query' => drupal_get_destination(),
     );
   }
@@ -387,7 +398,8 @@ function _follow_links_form_link($link, $title) {
  * Validates the url field to verify it's actually a url.
  */
 function follow_url_validate($form) {
-  if($form['#value'] && !preg_match("/^[a-zA-Z]+[:\/\/]+[A-Za-z0-9\-_]+\\.+[A-Za-z0-9\.\/%&=\?\-_]+$/i", $form['#value'])) {
+  $url = trim($form['#value']);
+  if($url && !preg_match("/^[a-zA-Z]+[:\/\/]+[A-Za-z0-9\-_]+\\.+[A-Za-z0-9\.\/%&=\?\-_]+$/i", $url)) {
     form_error($form, t('The specified url is invalid.'));
   }
 }
@@ -401,6 +413,8 @@ function follow_links_form_submit($form, &$form_state) {
 
   foreach($links as $name => $link) {
     $link = (object) $link;
+    $link->url = trim($link->url);
+
     // Check to see if there's actually a link
     if (empty($link->url)) {
       // If there's an lid, delete the link.
@@ -575,16 +589,18 @@ function follow_networks_load($reset = FALSE) {
  */
 function follow_follow_networks() {
   return array(
-    'facebook' => t('Facebook'),
-    'virb'     => t('Virb'),
-    'myspace'  => t('MySpace'),
-    'twitter'  => t('Twitter'),
-    'picasa'   => t('Picasa'),
-    'flickr'   => t('Flickr'),
-    'youtube'  => t('YouTube'),
-    'vimeo'    => t('Vimeo'),
-    'bliptv'   => t('blip.tv'),
-    'lastfm'   => t('last.fm'),
-    'linkedin' => t('LinkedIn'),
+    'facebook'  => t('Facebook'),
+    'virb'      => t('Virb'),
+    'myspace'   => t('MySpace'),
+    'twitter'   => t('Twitter'),
+    'picasa'    => t('Picasa'),
+    'flickr'    => t('Flickr'),
+    'youtube'   => t('YouTube'),
+    'vimeo'     => t('Vimeo'),
+    'bliptv'    => t('blip.tv'),
+    'lastfm'    => t('last.fm'),
+    'linkedin'  => t('LinkedIn'),
+    'delicious' => t('Delicious'),
+    'tumblr'    => t('Tumblr'),
   );
 }

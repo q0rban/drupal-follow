@@ -1,4 +1,4 @@
-/* $Id: follow.css,v 1.1.2.2 2009/05/21 03:00:42 q0rban Exp $ */
+/* $Id: follow.css,v 1.1.2.4 2009/08/04 03:13:51 q0rban Exp $ */
 
 a.follow-link {
 	height: 30px;
@@ -51,4 +51,12 @@ a.follow-link-vimeo {
 
 a.follow-link-linkedin {
 	background-image: url(icons/small/icon-linkedin.png);
+}
+
+a.follow-link-delicious {
+	background-image: url(icons/small/icon-delicious.png);
+}
+
+a.follow-link-tumblr {
+	background-image: url(icons/small/icon-tumblr.png);
 }

@@ -11,30 +11,34 @@ INSTALLATION
 ********************************************************************************
 Enable the module at admin/build/modules, then go to user/admin/permissions to 
 set which roles are allowed to edit the sitewide follow links, edit own follow
-links, edit all user follow links, or administer follow.  Finally, go to
-admin/build/blocks to enable the blocks.
+links, edit all user follow links, or administer follow.  Go to
+admin/build/blocks to enable the blocks. User follow links can be edited at
+user/%/follow, whereas sitewide follow links are at admin/build/follow
 
 RECOMMENDED ADD ON
 ********************************************************************************
 It is recommended to enable a module such as external [1] that will pop open
-the follow links in a new tab or window, as target="_blank" is not used since it
-doesn't validate.
+the follow links in a new tab or window; target="_blank" is not used since it
+does not validate.
 
 [1] http://drupal.org/project/external
 
 SOCIAL NETWORKS
 ********************************************************************************
 Here's a list of the currently supported social networks:
- • Facebook
- • Virb
- • MySpace
- • Twitter
- • Picasa
- • Flickr
- • YouTube
- • Vimeo
- • blip.tv
- • last.fm
+ - Facebook
+ - Virb
+ - MySpace
+ - Twitter
+ - Picasa
+ - Flickr
+ - YouTube
+ - Vimeo
+ - blip.tv
+ - last.fm
+ - LinkedIn
+ - Delicious
+ - Tumblr
 
 ICONS
 ********************************************************************************
