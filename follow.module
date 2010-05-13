@@ -584,13 +584,13 @@ function theme_follow_links_form($form) {
       }
 
       // Now, render the weight row.
-      $form['follow_links'][$key]['weight']['#attributes']['class'][] = 'follow-links-weight';
+      $form['follow_links'][$key]['weight']['#attributes']['class'] = 'follow-links-weight';
       $row[] = drupal_render($form['follow_links'][$key]['weight']);
 
       // Add the new row to our collection of rows, and give it the 'draggable' class.
       $rows[] = array(
         'data' => $row,
-        'class' => array('draggable'),
+        'class' => 'draggable',
       );
     }
     else {
