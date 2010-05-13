@@ -95,8 +95,8 @@ function follow_update_6000() {
   cache_clear_all('follow:networks', 'cache');
 
   $schema = follow_schema();
-  $path = $schema['path'];
-  $options = $schema['options'];
+  $path = $schema['follow_links']['fields']['path'];
+  $options = $schema['follow_links']['fields']['options'];
 
   // Since we match against just uid in queries, this field must
   // come first for the index to be used.
@@ -121,14 +121,14 @@ function follow_update_6001(&$sandbox = NULL) {
     $sandbox['current_lid'] = 0;
     $sandbox['max_lid'] = db_result(db_query('SELECT MAX(lid) FROM {follow_links}'));
   }
-  $result = db_query("SELECT lid, url FROM {follow_links} WHERE lid > %d LIMIT 0, 100 ORDER BY lid ASC", $sandbox['current_lid']);
+  $result = db_query("SELECT lid, url FROM {follow_links} WHERE lid > %d ORDER BY lid ASC LIMIT 100", $sandbox['current_lid']);
 
   while ($link = db_fetch_object($result)) {
     $parsed_url = follow_parse_url($link->url);
     $path = db_escape_string($parsed_url['path']);
     $options = serialize($parsed_url['options']);
     
-    $ret[] = update_sql("UPDATE {follow_links} SET path = '$path', options = $options WHERE lid = {$link->lid}");
+    $ret[] = update_sql("UPDATE {follow_links} SET path = '$path', options = '$options' WHERE lid = {$link->lid}");
 
     $sandbox['current_lid'] = $link->lid;
   }
