@@ -1,5 +1,5 @@
 <?php
-// $Id: follow.install,v 1.1.2.2 2010/05/13 17:27:36 q0rban Exp $
+// $Id: follow.install,v 1.1.2.3 2010/05/13 18:58:55 q0rban Exp $
 
 /**
  * @file
@@ -91,6 +91,12 @@ function follow_uninstall() {
 function follow_update_6000() {
   $ret = array();
 
+  if (drupal_get_installed_schema_version('follow') == 5000) {
+    drupal_set_installed_schema_version('follow', 6003);
+
+    return $ret;
+  }
+
   // We no longer cache the follow networks.
   cache_clear_all('follow:networks', 'cache');
 
@@ -117,23 +123,27 @@ function follow_update_6000() {
 function follow_update_6001(&$sandbox = NULL) {
   $ret = array();
 
-  if (!isset($sandbox['max_lid'])) {
-    $sandbox['current_lid'] = 0;
-    $sandbox['max_lid'] = db_result(db_query('SELECT MAX(lid) FROM {follow_links}'));
+  // Check to make sure the url column exists before running this update. The only
+  // instance I can think of where this might happen is a D5 to D6 upgrade.
+  if (db_column_exists('follow_links', 'url')) {
+    if (!isset($sandbox['max_lid'])) {
+      $sandbox['current_lid'] = 0;
+      $sandbox['max_lid'] = db_result(db_query('SELECT MAX(lid) FROM {follow_links}'));
+    }
+    $result = db_query("SELECT lid, url FROM {follow_links} WHERE lid > %d ORDER BY lid ASC LIMIT 100", $sandbox['current_lid']);
+  
+    while ($link = db_fetch_object($result)) {
+      $parsed_url = follow_parse_url($link->url);
+      $path = db_escape_string($parsed_url['path']);
+      $options = serialize($parsed_url['options']);
+      
+      $ret[] = update_sql("UPDATE {follow_links} SET path = '$path', options = '$options' WHERE lid = {$link->lid}");
+  
+      $sandbox['current_lid'] = $link->lid;
+    }
+  
+    $ret['#finished'] = empty($sandbox['max_lid']) ? 1 : ($sandbox['current_lid'] / $sandbox['max_lid']);
   }
-  $result = db_query("SELECT lid, url FROM {follow_links} WHERE lid > %d ORDER BY lid ASC LIMIT 100", $sandbox['current_lid']);
-
-  while ($link = db_fetch_object($result)) {
-    $parsed_url = follow_parse_url($link->url);
-    $path = db_escape_string($parsed_url['path']);
-    $options = serialize($parsed_url['options']);
-    
-    $ret[] = update_sql("UPDATE {follow_links} SET path = '$path', options = '$options' WHERE lid = {$link->lid}");
-
-    $sandbox['current_lid'] = $link->lid;
-  }
-
-  $ret['#finished'] = empty($sandbox['max_lid']) ? 1 : ($sandbox['current_lid'] / $sandbox['max_lid']);
   
   return $ret;
 }
@@ -151,14 +161,20 @@ function follow_update_6002() {
 }
 
 /**
- * Update for caching and schema changes.
+ * Add a title field.
  */
 function follow_update_6003() {
   $ret = array();
-  $schema = follow_schema();
-  $title = $schema['follow_links']['fields']['title'];
 
-  db_add_field($ret, 'follow_links', 'title', $title);
+  // Check to make sure the title column doesn't exists before running this 
+  // update. The only instance I can think of where this might happen is a D5 to 
+  // D6 upgrade.
+  if (!db_column_exists('follow_links', 'title')) {
+    $schema = follow_schema();
+    $title = $schema['follow_links']['fields']['title'];
+  
+    db_add_field($ret, 'follow_links', 'title', $title);
+  }
 
   return $ret;
 }
