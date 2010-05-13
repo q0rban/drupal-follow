@@ -1,5 +1,5 @@
 <?php
-// $Id: follow.install,v 1.1.2.1 2009/04/29 20:37:20 q0rban Exp $
+// $Id: follow.install,v 1.7 2010/01/05 16:30:44 q0rban Exp $
 
 /**
  * @file
@@ -18,20 +18,20 @@ function follow_install() {
  */
 function follow_schema() {
   $schema['follow_links'] = array(
-    'description' => t('Stores sitewide and user follow links.'),
+    'description' => 'Stores sitewide and user follow links.',
     'fields' => array(
       'lid' => array(
         'type' => 'serial',
         'unsigned' => TRUE,
         'not null' => TRUE,
-        'description' => t('Unique identifier for the {follow_links}.'),
+        'description' => 'Unique identifier for the {follow_links}.',
       ),
       'name' => array(
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
-        'description' => t("The machine name of the {follow_links}."),
+        'description' => "The machine name of the {follow_links}.",
       ),
       'uid' => array(
         'type' => 'int',
@@ -39,24 +39,37 @@ function follow_schema() {
         'default' => 0,
         'description' => "User's {users} uid.  Sitewide {follow_links} use uid 0",
       ),
-      'url' => array(
+      'path' => array(
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
-        'description' => 'The url the {follow_links} should point to.',
+        'description' => 'The Drupal path or extenal URL the {follow_links} should point to.',
+      ),
+      'options' => array(
+        'description' => 'A serialized array of options to be passed to the url() or l() function, such as a query string or HTML attributes.',
+        'type' => 'text',
+        'translatable' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The human readable name for the link.',
       ),
       'weight' => array(
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
         'size' => 'tiny',
-        'description' => t('The weight of this {follow_links}.'),
+        'description' => 'The weight of this {follow_links}.',
       ),
     ),
     'primary key' => array('lid'),
     'unique keys' => array(
-      'name_uid' => array('name', 'uid'),
+      'uid_name' => array('uid', 'name'),
     ),
   );
   return $schema;
@@ -70,5 +83,82 @@ function follow_uninstall() {
   variable_del('follow_user_block_title');
   variable_del('follow_site_block_title');
   variable_del('follow_site_block_user');
+}
+
+/**
+ * Update for caching and schema changes.
+ */
+function follow_update_6000() {
+  $ret = array();
+
+  // We no longer cache the follow networks.
   cache_clear_all('follow:networks', 'cache');
+
+  $schema = follow_schema();
+  $path = $schema['path'];
+  $options = $schema['options'];
+
+  // Since we match against just uid in queries, this field must
+  // come first for the index to be used.
+  db_drop_unique_key($ret, 'follow_links', 'name_uid');
+  db_add_unique_key($ret, 'follow_links', 'uid_name', array('uid', 'name'));
+  db_add_field($ret, 'follow_links', 'path', $path);
+  db_add_field($ret, 'follow_links', 'options', $options);
+
+  // We need to populate current rows' options col with an empty array.
+  $ret[] = update_sql("UPDATE {follow_links} SET options = 'a:0:{}'");
+  
+  return $ret;
+}
+
+/**
+ * Update existing data to the new schema.
+ */
+function follow_update_6001(&$sandbox = NULL) {
+  $ret = array();
+
+  if (!isset($sandbox['max_lid'])) {
+    $sandbox['current_lid'] = 0;
+    $sandbox['max_lid'] = db_result(db_query('SELECT MAX(lid) FROM {follow_links}'));
+  }
+  $result = db_query("SELECT lid, url FROM {follow_links} WHERE lid > %d LIMIT 0, 100 ORDER BY lid ASC", $sandbox['current_lid']);
+
+  while ($link = db_fetch_object($result)) {
+    $parsed_url = follow_parse_url($link->url);
+    $path = db_escape_string($parsed_url['path']);
+    $options = serialize($parsed_url['options']);
+    
+    $ret[] = update_sql("UPDATE {follow_links} SET path = '$path', options = $options WHERE lid = {$link->lid}");
+
+    $sandbox['current_lid'] = $link->lid;
+  }
+
+  $ret['#finished'] = empty($sandbox['max_lid']) ? 1 : ($sandbox['current_lid'] / $sandbox['max_lid']);
+  
+  return $ret;
+}
+
+
+/**
+ * Drop old schema column.
+ */
+function follow_update_6002() {
+  $ret = array();
+
+  db_drop_field($ret, 'follow_links', 'url');
+
+  return $ret;
+}
+
+/**
+ * Update for caching and schema changes.
+ */
+function follow_update_6003() {
+  $ret = array();
+  $schema = follow_schema();
+  $title = $schema['follow_links']['fields']['title'];
+
+  db_add_field($ret, 'follow_links', 'title', $title);
+
+  return $ret;
 }
