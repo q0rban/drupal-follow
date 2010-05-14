@@ -1,5 +1,5 @@
 <?php
-// $Id: follow.module,v 1.1.2.16 2010/05/13 17:27:36 q0rban Exp $
+// $Id: follow.module,v 1.1.2.19 2010/05/14 13:09:35 q0rban Exp $
 
 /**
  * @file
@@ -254,6 +254,42 @@ function follow_link_title($uid = 0) {
 }
 
 /**
+ * Default tooltip callback function to format a tooltip for a follow link.
+ *
+ * The tooltip is the title attribute on the anchor. By default it will display 
+ * as "Follow us on Twitter" or similar, depending on the network and your 
+ * settings, but networks can define custom tooltip callbacks to change this 
+ * text. For instance, an RSS feed or newsletter may want the tooltip to read 
+ * "Subscribe to our Feed" or "Subscribe to our Newsletter".
+ *
+ * @param $title
+ *   The translated string title of this link
+ * @param $variables
+ *   An array containing the link object and network data.
+ * @return
+ *   A translated string for the tooltip.
+ */
+function follow_link_tooltip($title, $variables) {
+  // No need to run through t() since both of these already have.
+  return follow_link_title($link->uid) .' '. $title;
+}
+
+/**
+ * Tooltip for the 'This site' or RSS link.
+ */
+function follow_link_tooltip_rss($title, $variables) {
+  return t('Subscribe to feed: @title', array('@title' => $title));
+}
+
+/**
+ * Tooltip for the Newsletter.
+ */
+function follow_link_tooltip_newsletter($title, $variables) {
+  $string = ($title == t('Newsletter')) ? 'Subscribe to @title' : 'Subscribe to newsletter: @title';
+  return t($string, array('@title' => $title));
+}
+
+/**
  * Helper function to build the block content display.
  *
  * @param $uid
@@ -286,8 +322,7 @@ function theme_follow_links($variables) {
   $output = '<div class="follow-links clearfix">';
 
   foreach($links as $link) {
-    $title = !empty($link->title) ? $link->title : $networks[$link->name]['title'];
-    $output .= theme('follow_link', array('link' => $link, 'title' => $title));
+    $output .= theme('follow_link', array('link' => $link, 'network' => $networks[$link->name]));
   }
 
   $output .= '</div>';
@@ -306,16 +341,24 @@ function theme_follow_links($variables) {
  */
 function theme_follow_link($variables) {
   $link = $variables['link'];
-  $title = $variables['title'];
+  $network = $variables['network'];
+  $title = !empty($link->title) ? $link->title : $network['title'];
+
+  // @see follow_link_tooltip().
+  $tooltip_callback = (isset($network['tooltip callback']) && function_exists($network['tooltip callback'])) ? $network['tooltip callback'] : 'follow_link_tooltip';
+  $tooltip = $tooltip_callback($title, $variables);
+
   $classes = array();
   $classes[] = 'follow-link';
   $classes[] = "follow-link-{$link->name}";
   $classes[] = $link->uid ? 'follow-link-user' : 'follow-link-site';
+
   $attributes = array(
     'class' => implode(' ', $classes),
-    'title' => follow_link_title($link->uid) .' '. $title,
+    'title' => $tooltip,
   );
   $link->options['attributes'] = $attributes;
+
   return l($title, $link->path, $link->options) . "\n";
 }
 
@@ -506,30 +549,65 @@ function follow_url_validate($form) {
   $url = trim($form['#value']);
   $networks = follow_networks_load($form['#follow_uid']);
   $info = $networks[$form['#follow_network']];
-  $regex = follow_build_url_regex($info);
+
+  // @see follow_network_regex().
+  $regex_callback = (isset($info['regex callback']) && function_exists($info['regex callback'])) ? $info['regex callback'] : 'follow_network_regex';
+  $regex = $regex_callback($info);
+
   $parsed = follow_parse_url($url);
   if($url && !preg_match($regex, $parsed['path'])) {
     if (!empty($info['domain'])) {
       $message = t('The specified url is invalid for the domain %domain.  Make sure you use http://.', array('%domain' => $info['domain']));
     }
     else {
-      $message = t('The specified path is invalid.  Please enter a path on this site (e.g. rss.xml or taxonomy/term/1/feed).');
+      $message = t('The specified path is invalid.');
     }
     form_error($form, $message);
   }
 }
 
 /**
- * Build a regex to validate the url based on a known service url.
+ * The default regex callback for a follow network. This simply returns a regular 
+ * expression to be used in validating the saved url.
+ *
+ * @param $network_info
+ *   An array of data about this network.
+ * @return
+ *   A string, regular expression used to validate the submitted url.
  */
-function follow_build_url_regex($network_info) {
+function follow_network_regex($network_info) {
+  // An external link.
+  return '@^https?://([a-z0-9\-_.]+\\.|)' . str_replace('.', '\\.', $network_info['domain']) . '/@i';
+}
 
-  if (!empty($network_info['domain'])) {
-    // An external link.
-    return '@^https?://([a-z0-9\-_.]+\\.|)' . str_replace('.', '\\.', $network_info['domain']) . '/@i';
-  }
+/**
+ * Verify that a url is relative.
+ */
+function follow_network_regex_internal() {
   // An internal link should not have ':'.
   return '@^[^:]+$@';
+}
+
+/**
+ * Verify that a url isÉ a url.
+ */
+function follow_network_regex_external() {
+  // @see http://j.mp/2Ol4gj
+  return '
+    /^(https?|ftp):\/\/(?#                                      protocol
+    )(([a-z0-9$_\.\+!\*\'\(\),;\?&=-]|%[0-9a-f]{2})+(?#         username
+    )(:([a-z0-9$_\.\+!\*\'\(\),;\?&=-]|%[0-9a-f]{2})+)?(?#      password
+    )@)?(?#                                                     auth requires @
+    )((([a-z0-9][a-z0-9-]*[a-z0-9]\.)*(?#                       domain segments AND
+    )[a-z]{2}[a-z0-9-]*[a-z0-9](?#                              top level domain OR
+    )|(\d|[1-9]\d|1\d{2}|2[0-4][0-9]|25[0-5]\.){3}(?#
+    )(\d|[1-9]\d|1\d{2}|2[0-4][0-9]|25[0-5])(?#                 IP address
+    ))(:\d+)?(?#                                                port
+    ))(((\/+([a-z0-9$_\.\+!\*\'\(\),;:@&=-]|%[0-9a-f]{2})*)*(?# path
+    )(\?([a-z0-9$_\.\+!\*\'\(\),;:@&=-]|%[0-9a-f]{2})*)(?#      query string
+    )?)?)?(?#                                                   path and query string optional
+    )(#([a-z0-9$_\.\+!\*\'\(\),;:@&=-]|%[0-9a-f]{2})*)?(?#      fragment
+    )$/i';
 }
 
 /**
@@ -780,6 +858,14 @@ function follow_default_networks($uid) {
     $networks['this-site'] = array(
       'title' => t('This site (RSS)'),
       'domain' => '',
+      'regex callback' => 'follow_network_regex_internal', 
+      'tooltip callback' => 'follow_link_tooltip_rss',
+    );
+    $networks['newsletter'] = array(
+      'title' => t('Newsletter'),
+      'domain' => '',
+      'regex callback' => 'follow_network_regex_external', 
+      'tooltip callback' => 'follow_link_tooltip_newsletter',
     );
   }
   return $networks;
