@@ -355,6 +355,7 @@ function theme_follow_link($variables) {
 
   $attributes = array(
     'class' => implode(' ', $classes),
+    'target' => '_blank',
     'title' => $tooltip,
   );
   $link->options['attributes'] = $attributes;
